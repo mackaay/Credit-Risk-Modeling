@@ -1,0 +1,146 @@
+####Gini####
+# The Gini-measure of the root node is given below
+gini_root <- 2 * 89 / 500 * 411 / 500
+
+# Compute the Gini measure for the left leaf node
+gini_ll <- 2* 401/(401+45) * 45/(401+45)
+
+# Compute the Gini measure for the right leaf node
+gini_rl <- 2* 10/54 * 44/54
+
+# Compute the gain
+gain <- gini_root - 446 / 500 * gini_ll - 54 / 500 * gini_rl
+
+# compare the gain-column in small_tree$splits with our computed gain, multiplied by 500, and assure they are the same
+small_tree$splits
+improve <- gain * 500
+
+####################rpart#########################
+###undersampling###
+# Load package rpart() in your workspace.
+library(rpart)
+
+# Change the code provided in the video such that a decision tree is constructed using the undersampled training set. Include rpart.control to relax the complexity parameter to 0.001.
+# add the argument control = rpart.control(cp = 0.001). cp, which is the complexity parameter, is the threshold value for a decrease in overall lack of fit for any split. 
+# If cp is not met, further splits will no longer be pursued. cp's default value is 0.01, but for complex problems, it is advised to relax cp.
+tree_undersample <- rpart(loan_status ~ ., method = "class", 
+                          data =  undersampled_training_set, 
+                          control = rpart.control(cp =0.001))
+
+# Plot the decision tree
+plot(tree_undersample, uniform = T)
+
+# Add labels to the decision tree 
+text(tree_undersample)
+
+###probabilities###
+# Change the code below such that a tree is constructed with adjusted prior probabilities.
+#argument parms and changing the proportion of non-defaults to 0.7, and of defaults to 0.3 (they should always sum up to 1). 
+tree_prior <- rpart(loan_status ~ ., method = "class", 
+                    data = training_set,
+                    parms = list(prior=c(0.7, 0.3)),
+                    control = rpart.control(cp = 0.001))
+
+# Plot the decision tree
+plot(tree_prior, uniform = T)
+
+# Add labels to the decision tree 
+text(tree_prior)
+
+###including a loss matrix###
+# Change the code below such that a decision tree is constructed using a loss matrix penalizing 10 times more heavily for misclassified defaults.
+#a penalization that is 10 times bigger when misclassifying an actual default as a non-default. 
+#This can be done replacing cost_def_as_nondef by 10, and cost_nondef_as_def by 1. 
+tree_loss_matrix <- rpart(loan_status ~ ., method = "class", 
+                          data =  training_set,
+                          parms = list(loss = matrix(c(0, 10, 1, 0), ncol=2)),
+                          control = rpart.control(cp = 0.001))
+
+
+# Plot the decision tree
+plot(tree_loss_matrix, uniform = T)
+
+# Add labels to the decision tree 
+text(tree_loss_matrix)
+
+###################pruning tree################
+###Pruning the tree with changed prior probabilities###
+# tree_prior is loaded in your workspace
+
+# Plot the cross-validated error rate as a function of the complexity parameter
+plotcp(tree_prior)
+
+# Use printcp() to identify for which complexity parameter the cross-validated error rate is minimized. 
+printcp(tree_prior)
+
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree_prior$cptable[ , "xerror"])
+
+# Create tree_min
+tree_min <- tree_prior$cptable[index, "CP"]
+
+#  Prune the tree using tree_min
+ptree_prior <- prune(tree_prior, cp = tree_min)
+
+# Use prp() to plot the pruned tree
+prp(ptree_prior)
+
+###Pruning the tree with the loss matrix###
+# set a seed and run the code to construct the tree with the loss matrix again
+set.seed(345)
+tree_loss_matrix  <- rpart(loan_status ~ ., method = "class", data = training_set, 
+                           parms = list(loss=matrix(c(0, 10, 1, 0), ncol = 2)),
+                           control = rpart.control(cp = 0.001))
+
+# Plot the cross-validated error rate as a function of the complexity parameter
+plotcp(tree_loss_matrix)
+
+# Prune the tree using cp = 0.0012788
+ptree_loss_matrix <- prune(tree_loss_matrix, cp=0.0012788)
+
+# Use prp() and argument extra = 1 to plot the pruned tree
+prp(ptree_loss_matrix, extra = 1)
+
+########options and confusion matrix###############
+# set a seed and run the code to obtain a tree using weights, minsplit and minbucket
+set.seed(345)
+tree_weights <- rpart(loan_status ~ ., method = "class", 
+                      data = training_set, 
+                      control = rpart.control(cp = 0.001,
+                      minsplit = 5,minbucket = 2),
+                      weights = case_weights)
+
+# Plot the cross-validated error rate for a changing cp
+plotcp(tree_weights)
+
+# Create an index for of the row with the minimum xerror
+index <- which.min(tree_weights$cp[ , "xerror"])
+
+# Create tree_min
+tree_min <- tree_weights$cp[index, "CP"]
+
+# Prune the tree using tree_min
+ptree_weights <- prune(tree_weights, tree_min)
+
+# Plot the pruned tree using the rpart.plot()-package
+prp(ptree_weights, extra = 1)
+
+###Confusion matrices and accuracy ###
+# Make predictions for each of the pruned trees using the test set.
+pred_undersample <- predict(ptree_undersample, newdata = test_set, type ="class")
+pred_prior <- predict(ptree_prior, newdata = test_set, type ="class")
+pred_loss_matrix <- predict(ptree_loss_matrix, newdata = test_set, type ="class")
+pred_weights <- predict(ptree_weights, newdata = test_set, type = "class")
+  
+# construct confusion matrices using the predictions.
+confmat_undersample <-table(test_set$loan_status, pred_undersample)
+confmat_prior <- table(test_set$loan_status, pred_prior)
+confmat_loss_matrix <- table(test_set$loan_status, pred_loss_matrix)
+confmat_weights <- table(test_set$loan_status, pred_weights)
+  
+# Compute the accuracies
+acc_undersample <- sum(diag(confmat_undersample)) / nrow(test_set)
+acc_prior <- sum(diag(confmat_prior)) / nrow(test_set)
+acc_loss_matrix <- sum(diag(confmat_loss_matrix)) / nrow(test_set)
+acc_weights <- sum(diag(confmat_weights )) / nrow(test_set)
+
